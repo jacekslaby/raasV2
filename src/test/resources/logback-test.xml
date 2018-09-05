@@ -9,6 +9,7 @@
   </appender>
   
   <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+    <append>false</append>
     <file>logback.log</file>
 
     <encoder>
