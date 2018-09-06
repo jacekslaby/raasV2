@@ -126,6 +126,8 @@ public class RaasDaoKafka implements RaasDao {
                 //
                 if (tagOfTheFirstAlarmToBeReturned == null   // are we loading the first pack ?
                         && value == null) {
+
+                    resultCounter--;
                     continue; // We simply ignore this alarm.  (AND we support a case that it was removed within the first pack !)
                 }
 
@@ -175,6 +177,25 @@ public class RaasDaoKafka implements RaasDao {
         logger.info("queryAlarms: subpartitionName='{}' - success", subpartitionName);
 
         return result;
+    }
+
+    @Override
+    public void removeAlarm(String domain, String adapterName, String notificationIdentifier) {
+        ProducerRecord<String, byte[]> data = new ProducerRecord<>(
+                topicName, notificationIdentifier, null);  // null is a marker for a deleted record
+
+        logger.info("removeAlarm: '{}' - start", notificationIdentifier);
+        try {
+            // @TODO save to a subpartition assigned to this adapter
+
+            producer.send(data).get(); // We want to save it immediately.
+
+        } catch (InterruptedException|ExecutionException e) {
+            logger.info("removeAlarm: '{}' - failure", notificationIdentifier);
+            throw new RuntimeException("Failed to remove the alarm: " + notificationIdentifier, e);  // @TODO add exception to API
+        }
+
+        logger.info("removeAlarm: '{}' - success", notificationIdentifier);
     }
 
     @Override

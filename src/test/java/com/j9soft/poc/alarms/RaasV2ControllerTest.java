@@ -8,7 +8,6 @@ import org.mockito.Mockito;
 
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.isEmptyOrNullString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,6 +60,16 @@ public class RaasV2ControllerTest {
         when(raasDaoMock.queryAlarms(DOMAIN, ADAPTER_NAME, "22", null, 3)).thenReturn(EMPTY_ALARMS_PACK);
 
         assertThat(raas.getRawAlarms(PARTITION_DEFINITION, "22", null, 3), is(EMPTY_ALARMS_PACK));
+    }
+
+    @Test
+    public void whenDeletingOnAlarm_itIsRemovedFromDao() {
+
+        // Let's delete it.
+        raas.deleteAlarm(ALARM_NOID, PARTITION_DEFINITION);
+
+        // Let's verify that it was saved in Dao.
+        verify(raasDaoMock).removeAlarm(DOMAIN, ADAPTER_NAME, ALARM_NOID);
     }
 
 }

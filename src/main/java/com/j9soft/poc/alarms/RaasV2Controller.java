@@ -68,6 +68,18 @@ public class RaasV2Controller implements RaasV2 {
                 notificationIdentifier, valueObjectAsJson);
     }
 
+    @Override
+    @DeleteMapping("/v2/rawalarms/{notificationIdentifier}")
+    public void deleteAlarm(@PathVariable("notificationIdentifier") String notificationIdentifier,
+                            @RequestAttribute(name = "partitionDefinition") RawAlarmsPartitionDefinition partitionDefinition) {
+
+        logger.info("deleteAlarm(notificationIdentifier='{}', domain='{}', adapterName='{}')",
+                notificationIdentifier, partitionDefinition.getDomain(), partitionDefinition.getAdapterName());
+
+        this.raasDao.removeAlarm(partitionDefinition.getDomain(), partitionDefinition.getAdapterName(),
+                notificationIdentifier);
+    }
+
     @PostConstruct
     public void init() {
         Assert.notNull(raasDao, "raasDao is null!");

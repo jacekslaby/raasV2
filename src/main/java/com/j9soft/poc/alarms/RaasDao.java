@@ -9,5 +9,7 @@ public interface RaasDao {
 
     RawAlarmsPack queryAlarms(String domain, String adapterName, String subpartitionName, String tagOfTheFirstAlarmToBeReturned, int howMany);
 
+    void removeAlarm(String domain, String adapterName, String notificationIdentifier);
+
     String[] getSubpartitions(RawAlarmsPartitionDefinition partitionDefinition);
 }

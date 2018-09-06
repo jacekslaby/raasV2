@@ -153,8 +153,8 @@ public class RaasDaoKafkaTest {
                 EXISTING_ALARM.notificationIdentifier, newJson);
 
         // Now let's remove it.
-        // @TODO add remove method to API
-
+        kafkaDao.removeAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                EXISTING_ALARM.notificationIdentifier);
 
         // We expect that no alarms are returned.
         //

@@ -41,8 +41,14 @@ public interface RaasV2 {
 
     /**
      * Create or Replace an alarm. (if replacing then all not provided attributes are nullified)
+     * (Note: providing null valueObjectAsJson is equivalent to {@link #deleteAlarm(String,RawAlarmsPartitionDefinition)}.)
      */
     void putRawAlarm(String notificationIdentifier, RawAlarmsPartitionDefinition partitionDefinition,
                      String valueObjectAsJson);
+
+    /**
+     * Delete an alarm.
+     */
+    void deleteAlarm(String notificationIdentifier, RawAlarmsPartitionDefinition partitionDefinition);
 
 }

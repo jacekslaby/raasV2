@@ -106,6 +106,13 @@ public class RaasDaoDevMock implements RaasDao {
     }
 
     @Override
+    public void removeAlarm(String domain, String adapterName, String notificationIdentifier) {
+        synchronized (inMemoryMap) {
+            inMemoryMap.remove(notificationIdentifier);
+        }
+    }
+
+    @Override
     public String[] getSubpartitions(RawAlarmsPartitionDefinition partitionDefinition) {
         return new String[] {THE_ONLY_SUBPARTITION};
     }
