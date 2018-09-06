@@ -26,7 +26,7 @@
     </encoder>
   </appender>
 
-  <logger name="com.j9soft.poc.alarms">
+  <logger name="com.j9soft.poc.alarms" level="debug">
     <appender-ref ref="FILE-raasV2" />
   </logger>
 

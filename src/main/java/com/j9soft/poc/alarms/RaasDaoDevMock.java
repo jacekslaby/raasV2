@@ -4,6 +4,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Implementation of data access layer (DAO) based on a hashmap kept in memory.
@@ -15,17 +16,29 @@ import java.util.*;
 @Service
 public class RaasDaoDevMock implements RaasDao {
 
+    public static class AlarmEntry {
+        long position;
+        String value;
+
+        public AlarmEntry(long position, String value) {
+            this.position = position;
+            this.value = value;
+        }
+    }
+
     private static final String THE_ONLY_SUBPARTITION = "33";
 
-    private final Map<String, String> inMemoryMap = new TreeMap<>();
     private final JSONValuePatchingComponent patcher = new JSONValuePatchingComponent();
+
+    private Map<String, AlarmEntry> inMemoryMap = new HashMap<>();
+    private long nextPosition = 0;
 
     @Override
     public void createOrUpdateAlarm(String domain, String adapterName, String notificationIdentifier, String value) {
         synchronized (inMemoryMap) {
 
             if (value != null) {
-                inMemoryMap.put(notificationIdentifier, value);
+                inMemoryMap.put(notificationIdentifier, new AlarmEntry(nextPosition++, value));
             } else {
                 inMemoryMap.remove(notificationIdentifier);
             }
@@ -42,9 +55,24 @@ public class RaasDaoDevMock implements RaasDao {
         synchronized (inMemoryMap) {
             int availableAlarmsCount = inMemoryMap.size();
 
-            Iterator<Map.Entry<String,String>> existingAlarmsIterator = inMemoryMap.entrySet().iterator();
-            Map.Entry<String,String> entry = null;
-            Map.Entry<String,String> theFirstAlarmToBeReturned = null;
+            // First we need to have a sorted list of alarms.
+            //
+            LinkedHashMap<String, AlarmEntry> sortedMap =
+                    inMemoryMap.entrySet().stream()
+                            .sorted(Map.Entry.comparingByValue(new Comparator<AlarmEntry>() {
+                                @Override
+                                public int compare(AlarmEntry o1, AlarmEntry o2) {
+                                    return Long.compare(o1.position, o2.position);
+                                }
+                            }))
+                            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                                    (e1, e2) -> e1, LinkedHashMap::new));
+
+            // Now we can read the map.
+            //
+            Iterator<Map.Entry<String,AlarmEntry>> existingAlarmsIterator = sortedMap.entrySet().iterator();
+            Map.Entry<String,AlarmEntry> entry = null;
+            Map.Entry<String,AlarmEntry> theFirstAlarmToBeReturned = null;
 
             // Let's move to the specified "page" within our set of alarms.
             if (tagOfTheFirstAlarmToBeReturned != null) {
@@ -83,14 +111,14 @@ public class RaasDaoDevMock implements RaasDao {
 
             if (theFirstAlarmToBeReturned !=null) {
                 result.alarmNotificationIdentifiers[i] = theFirstAlarmToBeReturned.getKey();
-                result.alarmValues[i] = theFirstAlarmToBeReturned.getValue();
+                result.alarmValues[i] = theFirstAlarmToBeReturned.getValue().value;
                 i++;
             }
 
             for ( ; i < numberOfAlarmsToReturn ; i++ ) {
                 entry = existingAlarmsIterator.next();
                 result.alarmNotificationIdentifiers[i] = entry.getKey();
-                result.alarmValues[i] = entry.getValue();
+                result.alarmValues[i] = entry.getValue().value;
             }
 
             // Let's calculate where to start a next page of results.

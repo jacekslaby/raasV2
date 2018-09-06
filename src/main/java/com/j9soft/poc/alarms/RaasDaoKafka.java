@@ -9,6 +9,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,7 @@ import java.util.concurrent.ExecutionException;
  *
  * This Dao is used in production mode, i.e. in production environments.
  */
+@Profile("Production")
 @Service
 public class RaasDaoKafka implements RaasDao {
 
@@ -108,6 +110,7 @@ public class RaasDaoKafka implements RaasDao {
             logger.info("queryAlarms: subpartitionName='{}' - poll: count={}", subpartitionName, records.count());
 
             for (ConsumerRecord<String, byte[]> record: records) {
+                logger.debug("queryAlarms: subpartitionName='{}' - poll: record={}", subpartitionName, record);
                 resultCounter++;
                 key = record.key();
                 value = record.value();
@@ -141,7 +144,7 @@ public class RaasDaoKafka implements RaasDao {
                     values.add(null);  // In the second and the next packs we must deliver nulls because they may concern alarms from the previous packs.
                 }
 
-                if (notificationIdentifiers.size() >= howMany) {
+                if (resultCounter >= howMany) {
                     // Client does not want more results.
                     break;
                 }

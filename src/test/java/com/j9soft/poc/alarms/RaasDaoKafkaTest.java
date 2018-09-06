@@ -16,10 +16,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.Properties;
 
-import static com.j9soft.poc.alarms.RaasDaoKafkaTestConfiguration.EXISTING_ALARM;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-
 
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class RaasDaoKafkaTest {
@@ -33,7 +29,8 @@ public class RaasDaoKafkaTest {
     private static KafkaServer kafkaServer;
 
     private static RaasDaoKafkaTestConfiguration testConfig;
-    private RaasDao kafkaDao;
+    protected RaasDao kafkaDao;
+    private RaasDaoTestScenarios scenarios;
 
     @BeforeClass
     public static void init() throws IOException {
@@ -94,20 +91,12 @@ public class RaasDaoKafkaTest {
     public void initDao() {
         // Create bean to be tested.
         this.kafkaDao = testConfig.getDao();
+        scenarios = new RaasDaoTestScenarios(this.kafkaDao);
     }
 
     @Test
     public void t1_whenCreatedANewAlarm_thenReturnIt() {
-        kafkaDao.createOrUpdateAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                EXISTING_ALARM.notificationIdentifier, EXISTING_ALARM.json);
-
-        RawAlarmsPack pack = kafkaDao.queryAlarms(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                "0", null, 5);
-        
-        assertThat(pack.alarmNotificationIdentifiers.length, is(1));
-        assertThat(pack.alarmNotificationIdentifiers[0], is(EXISTING_ALARM.notificationIdentifier));
-        assertThat(pack.alarmValues.length, is(1));
-        assertThat(pack.alarmValues[0], is(EXISTING_ALARM.json));
+        scenarios.t1_whenCreatedANewAlarm_thenReturnIt();
     }
 
     @Test
@@ -117,52 +106,24 @@ public class RaasDaoKafkaTest {
         // Connect again to the embedded DB.  (do not create test data again !)
         testConfig = new RaasDaoKafkaTestConfiguration();
         kafkaDao = testConfig.getDao();
+        scenarios = new RaasDaoTestScenarios(this.kafkaDao);
 
-        RawAlarmsPack pack = kafkaDao.queryAlarms(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                "0", null, 5);
-        
-        assertThat(pack.alarmNotificationIdentifiers.length, is(1));
-        assertThat(pack.alarmNotificationIdentifiers[0], is(EXISTING_ALARM.notificationIdentifier));
-        assertThat(pack.alarmValues.length, is(1));
-        assertThat(pack.alarmValues[0], is(EXISTING_ALARM.json));
+        scenarios.t2_whenAlarmExists_thenShouldBeReturned();
     }
 
     @Test
     public void t3_whenUpsertingAnExistingAlarm_thenUpdateIt() {
-        final String newJson = "{\"additionalText\":\"serious stuff\"}";
-
-        // It updates alarm with the same NotificationIdentifier. So we expect still one result from queryAlarms.
-        kafkaDao.createOrUpdateAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                EXISTING_ALARM.notificationIdentifier, newJson);
-
-        RawAlarmsPack pack = kafkaDao.queryAlarms(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                "0", null, 5);
-        
-        assertThat(pack.alarmNotificationIdentifiers.length, is(1));
-        assertThat(pack.alarmNotificationIdentifiers[0], is(EXISTING_ALARM.notificationIdentifier));
-        assertThat(pack.alarmValues.length, is(1));
-        assertThat(pack.alarmValues[0], is(newJson));
+        scenarios.t3_whenUpsertingAnExistingAlarm_thenUpdateIt();
     }
 
     @Test
     public void t4_whenRemovedAnExistingAlarm_thenCreateIt() {
-        final String newJson = "{\"additionalText\":\"serious stuff\"}";
+        scenarios.t4_whenRemovedAnExistingAlarm_thenCreateIt();
+    }
 
-        // Let's be sure that an alarm exists.
-        kafkaDao.createOrUpdateAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                EXISTING_ALARM.notificationIdentifier, newJson);
-
-        // Now let's remove it.
-        kafkaDao.removeAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                EXISTING_ALARM.notificationIdentifier);
-
-        // We expect that no alarms are returned.
-        //
-        RawAlarmsPack pack = kafkaDao.queryAlarms(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                "0", null, 5);
-
-        assertThat(pack.alarmNotificationIdentifiers.length, is(0));
-        assertThat(pack.alarmValues.length, is(0));
+    @Test
+    public void t5_whenPutThreeAlarms_thenKeepTheirOrder() {
+        scenarios.t5_whenPutThreeAlarms_thenKeepTheirOrder();
     }
 
 }

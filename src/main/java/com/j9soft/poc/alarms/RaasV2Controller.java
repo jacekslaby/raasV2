@@ -39,8 +39,9 @@ public class RaasV2Controller implements RaasV2 {
     @Override
     @GetMapping("/v2/rawalarms")
     public RawAlarmsPack getRawAlarms(@RequestAttribute(name = "partitionDefinition") RawAlarmsPartitionDefinition partitionDefinition,
-                                      String subpartitionName,
-                                      String tagOfTheFirstAlarmToBeReturned, int howMany) {
+                                      @RequestParam(name = "subpartitionName", defaultValue = "0") String subpartitionName,
+                                      @RequestParam(name = "tagOfTheFirstAlarmToBeReturned", required = false) String tagOfTheFirstAlarmToBeReturned,
+                                      @RequestParam(name = "howMany", defaultValue = "100") int howMany) {
 
         logger.info("rawAlarms( domain='{}', adapterName='{}')",
                 partitionDefinition.getDomain(), partitionDefinition.getAdapterName());
