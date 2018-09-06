@@ -69,50 +69,97 @@ public class RaasDaoKafka implements RaasDao {
 
         RawAlarmsPack result = new RawAlarmsPack();
 
-        // Calculate current end of data in this kafka partition.
+        // Prepare from which Kafka partition we will read.
         //
         TopicPartition partition = new TopicPartition(topicName, Integer.parseInt(subpartitionName));
         Collection<TopicPartition> partitions = Arrays.asList(partition);
+
+        // Calculate current end of data in this Kafka partition.
+        // (We need this to calculate whether there is a next pack available.)
+        //
         Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
         long subpartitionEndOffset =  endOffsets.get(partition);
 
-        // Rewind to the beginning of data to be retrieved from this kafka partition.
+        // Rewind to the beginning of data. (either start from zero (in case of the first pack) or a designated place)
         //
         consumer.assign(partitions);  // btw: We do not use subscribe(), i.e. we do not use kafka's built-in group coordination.
-        if (tagOfTheFirstAlarmToBeReturned != null) {
+        if (tagOfTheFirstAlarmToBeReturned == null) {
+            // We want to load all contents. (i.e. its the first pack)
+            logger.info("queryAlarms: subpartitionName='{}' - seekToBeginning", subpartitionName);
+            consumer.seekToBeginning(partitions);
+        } else {
             logger.info("queryAlarms: subpartitionName='{}' - seek:", tagOfTheFirstAlarmToBeReturned);
             consumer.seek(partition, Long.parseLong(tagOfTheFirstAlarmToBeReturned)); // We want to load another pack.
-        } else {
-            logger.info("queryAlarms: subpartitionName='{}' - seekToBeginning", subpartitionName);
-            consumer.seekToBeginning(partitions);  // We want to load all contents.
         }
 
         // Read the data.
         //
-        // @TODO remove duplicated keys (i.e. compaction), remove keys with null value
-        //
+        Map<String, Integer> loadedAlarms = new HashMap<>();
         List<String> notificationIdentifiers = new ArrayList<>(howMany);
         List<String> values = new ArrayList<>(howMany);
         ConsumerRecords<String, byte[]> records;
+        String key;
+        byte[] value;
+        int resultCounter = 0;
+        Integer lastIndex;
         do {
+            // Load from Kafka.
             records = consumer.poll(Duration.ofMillis(100));
             logger.info("queryAlarms: subpartitionName='{}' - poll: count={}", subpartitionName, records.count());
 
             for (ConsumerRecord<String, byte[]> record: records) {
-                notificationIdentifiers.add(record.key());
-                values.add( new String(record.value(), StandardCharsets.UTF_8) );
+                resultCounter++;
+                key = record.key();
+                value = record.value();
+
+                // Remove duplicated keys.
+                // (I.e. it is like a "compaction" within a pack. We overwrite old alarm value with a new one.)
+                //
+                lastIndex = loadedAlarms.get(key);
+                if (lastIndex != null) {
+                    // We will ignore the value previously gathered for the same Notification Identifier.
+                    resultCounter--;
+                    notificationIdentifiers.set(lastIndex, null); // we will not use this old value so set null
+                }
+
+                // Remove keys with null value. (Note: It is possible to do this in the first pack only.)
+                //
+                if (tagOfTheFirstAlarmToBeReturned == null   // are we loading the first pack ?
+                        && value == null) {
+                    continue; // We simply ignore this alarm.  (AND we support a case that it was removed within the first pack !)
+                }
+
+                // We gather this alarm for the result.
+                //
+                loadedAlarms.put(key, notificationIdentifiers.size());
+                notificationIdentifiers.add(key);
+                if (value != null) {
+                    values.add( new String(record.value(), StandardCharsets.UTF_8) );
+                } else {
+                    values.add(null);  // In the second and the next packs we must deliver nulls because they may concern alarms from the previous packs.
+                }
 
                 if (notificationIdentifiers.size() >= howMany) {
-                    // We do not want to return more results.
+                    // Client does not want more results.
                     break;
                 }
             }
 
-        } while (! records.isEmpty());
+        } while ( !records.isEmpty() );
 
         // Prepare the result.
-        result.alarmNotificationIdentifiers = notificationIdentifiers.toArray(new String[notificationIdentifiers.size()]);
-        result.alarmValues = values.toArray(new String[values.size()]);
+        //
+        result.alarmNotificationIdentifiers = new String[resultCounter];
+        result.alarmValues = new String[resultCounter];
+        int resultIndex = 0;
+        for (int i = 0; i < notificationIdentifiers.size(); i++) {
+            if (notificationIdentifiers.get(i) == null) {
+                continue;  // this alarm is ignored because it got overwritten
+            }
+            result.alarmNotificationIdentifiers[resultIndex] = notificationIdentifiers.get(i);
+            result.alarmValues[resultIndex] = values.get(i);
+            resultIndex++;
+        }
 
         // Read the next possible position. (It does not necessarily  mean that at the moment there is an alarm available.)
         //
