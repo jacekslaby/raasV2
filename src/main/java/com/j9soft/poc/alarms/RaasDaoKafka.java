@@ -22,7 +22,7 @@ import java.util.concurrent.ExecutionException;
  *
  * This Dao is used in production mode, i.e. in production environments.
  */
-@Profile("Production")
+@Profile({"prod","kafka-dev"})
 @Service
 public class RaasDaoKafka implements RaasDao {
 
@@ -90,9 +90,10 @@ public class RaasDaoKafka implements RaasDao {
             logger.info("queryAlarms: subpartitionName='{}' - seekToBeginning", subpartitionName);
             consumer.seekToBeginning(partitions);
         } else {
-            logger.info("queryAlarms: subpartitionName='{}' - seek:", tagOfTheFirstAlarmToBeReturned);
+            logger.info("queryAlarms: subpartitionName='{}' - seek({}):", subpartitionName, tagOfTheFirstAlarmToBeReturned);
             consumer.seek(partition, Long.parseLong(tagOfTheFirstAlarmToBeReturned)); // We want to load another pack.
         }
+        long currentPosition = consumer.position(partition);
 
         // Read the data.
         //
@@ -104,6 +105,7 @@ public class RaasDaoKafka implements RaasDao {
         byte[] value;
         int resultCounter = 0;
         Integer lastIndex;
+        boolean stopReading = false;
         do {
             // Load from Kafka.
             records = consumer.poll(Duration.ofMillis(100));
@@ -114,6 +116,7 @@ public class RaasDaoKafka implements RaasDao {
                 resultCounter++;
                 key = record.key();
                 value = record.value();
+                currentPosition = record.offset();
 
                 // Remove duplicated keys.
                 // (I.e. it is like a "compaction" within a pack. We overwrite old alarm value with a new one.)
@@ -123,6 +126,7 @@ public class RaasDaoKafka implements RaasDao {
                     // We will ignore the value previously gathered for the same Notification Identifier.
                     resultCounter--;
                     notificationIdentifiers.set(lastIndex, null); // we will not use this old value so set null
+                    loadedAlarms.remove(key);
                 }
 
                 // Remove keys with null value. (Note: It is possible to do this in the first pack only.)
@@ -146,18 +150,24 @@ public class RaasDaoKafka implements RaasDao {
 
                 if (resultCounter >= howMany) {
                     // Client does not want more results.
+                    stopReading = true;
                     break;
                 }
             }
 
-        } while ( !records.isEmpty() );
+        } while ( !stopReading && !records.isEmpty() );
 
         // Prepare the result.
         //
         result.alarmNotificationIdentifiers = new String[resultCounter];
         result.alarmValues = new String[resultCounter];
         int resultIndex = 0;
+        logger.debug("queryAlarms: subpartitionName='{}' - resultCounter = '{}'", subpartitionName, resultCounter);
         for (int i = 0; i < notificationIdentifiers.size(); i++) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("queryAlarms: subpartitionName='{}' - notificationIdentifiers[{}] = '{}'",
+                        subpartitionName, i, notificationIdentifiers.get(i));
+            }
             if (notificationIdentifiers.get(i) == null) {
                 continue;  // this alarm is ignored because it got overwritten
             }
@@ -168,13 +178,13 @@ public class RaasDaoKafka implements RaasDao {
 
         // Read the next possible position. (It does not necessarily  mean that at the moment there is an alarm available.)
         //
-        long currentPosition = consumer.position(partition);
-        if (currentPosition >= subpartitionEndOffset) {
+        long nextPossiblePosition = currentPosition + 1;
+        if (nextPossiblePosition >= subpartitionEndOffset) {
             // There are no more alarms.
             result.tagOfTheNextAvailableAlarm = null;
         } else {
             // There are more alarms available.  (i.e. they can be retrieved by another call)
-            result.tagOfTheNextAvailableAlarm = String.valueOf(currentPosition);
+            result.tagOfTheNextAvailableAlarm = String.valueOf(nextPossiblePosition);
         }
 
         logger.info("queryAlarms: subpartitionName='{}' - success", subpartitionName);

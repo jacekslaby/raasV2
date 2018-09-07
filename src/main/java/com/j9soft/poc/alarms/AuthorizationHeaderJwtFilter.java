@@ -28,7 +28,7 @@ import java.io.IOException;
  *
  * Inspiration - https://aboullaite.me/spring-boot-token-authentication-using-jwt/
  */
-@Profile("default")
+@Profile({"default","kafka-dev"})
 @Component
 class AuthorizationHeaderJwtFilter extends GenericFilterBean {
 

@@ -1,32 +1,15 @@
 package com.j9soft.poc.alarms;
 
-import kafka.admin.RackAwareMode;
-import kafka.server.KafkaConfig;
-import kafka.server.KafkaServer;
-import kafka.utils.MockTime;
-import kafka.utils.TestUtils;
-import kafka.zk.AdminZkClient;
-import kafka.zk.EmbeddedZookeeper;
-import kafka.zk.KafkaZkClient;
-import org.apache.kafka.common.utils.Time;
 import org.junit.*;
 import org.junit.runners.MethodSorters;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.util.Properties;
 
 
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 public class RaasDaoKafkaTest {
 
-    private static final String ZKHOST = "127.0.0.1";
-    private static final String BROKERHOST = "127.0.0.1";
-    private static final String BROKERPORT = "9092";
-
-    private static EmbeddedZookeeper zkServer;
-    private static KafkaZkClient zkClient;
-    private static KafkaServer kafkaServer;
+    private static RaasDaoKafkaTestEmbeddedBroker embeddedBroker;
 
     private static RaasDaoKafkaTestConfiguration testConfig;
     protected RaasDao kafkaDao;
@@ -37,54 +20,19 @@ public class RaasDaoKafkaTest {
 
         // Start an embedded Kafka Server
         //
-        // setup Zookeeper
-        zkServer = new EmbeddedZookeeper();
-        String zkConnect = ZKHOST + ":" + zkServer.port();
-        //
-        // setup Broker
-        Properties brokerProps = new Properties();
-        brokerProps.setProperty("zookeeper.connect", zkConnect);
-        brokerProps.setProperty("broker.id", "0");
-        brokerProps.setProperty("log.dirs", Files.createTempDirectory("kafka-").toAbsolutePath().toString());
-        brokerProps.setProperty("listeners", "PLAINTEXT://" + BROKERHOST +":" + BROKERPORT);
-        brokerProps.setProperty("offsets.topic.replication.factor" , "1");
-        KafkaConfig config = new KafkaConfig(brokerProps);
-        Time mock = new MockTime();
-        kafkaServer = TestUtils.createServer(config, mock);
+        embeddedBroker = new RaasDaoKafkaTestEmbeddedBroker();
+        embeddedBroker.init();
 
         // Connect to the embedded Kafka.
         testConfig = new RaasDaoKafkaTestConfiguration();
 
-        // Create topic.
-        //
-        Boolean isSecure = false;
-        int sessionTimeoutMs = 200000;
-        int connectionTimeoutMs = 15000;
-        int maxInFlightRequests = 10;
-        Time time = Time.SYSTEM;
-        String metricGroup = "myGroup";
-        String metricType = "myType";
-        zkClient = KafkaZkClient.apply(zkConnect, isSecure, sessionTimeoutMs,
-                connectionTimeoutMs, maxInFlightRequests, time, metricGroup, metricType);
-
-        AdminZkClient adminZkClient = new AdminZkClient(zkClient);
-
-        int partitions = 1;
-        int replication = 1;
-        Properties topicConfig = new Properties();
-
-        adminZkClient.createTopic(testConfig.getTopicName(), partitions, replication,
-                topicConfig, RackAwareMode.Disabled$.MODULE$);   // @TODO topic compaction
+        embeddedBroker.createTopic(testConfig.getTopicName());
     }
 
     @AfterClass
     public static void cleanup() {
         testConfig.close();
-
-        kafkaServer.shutdown();
-        zkClient.close();
-
-        // zkServer.shutdown();  @TODO uncomment when a patch is available for https://issues.apache.org/jira/browse/KAFKA-6291#
+        embeddedBroker.close();
     }
 
     @Before

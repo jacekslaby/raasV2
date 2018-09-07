@@ -1,7 +1,6 @@
 package com.j9soft.poc.alarms;
 
 
-//@Configuration
 public class RaasDaoKafkaTestConfiguration {
 
     public static class AlarmDetails {

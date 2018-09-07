@@ -4,12 +4,14 @@ import org.junit.Assert;
 
 import static com.j9soft.poc.alarms.RaasDaoKafkaTestConfiguration.EXISTING_ALARM;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.*;
 
 /*
  * Test scenarios that can be reused to test different DAOs.
  */
 public class RaasDaoTestScenarios {
+
+    private static final String[] TEST_KEYS = new String[]{"eric2g:33", "siem:44", "huawei:11"};
 
     private RaasDao dao;
 
@@ -81,10 +83,9 @@ public class RaasDaoTestScenarios {
 
         // Create three alarms.
         //
-        String[] notificationIdentifiers = new String[] {"eric2g:33", "siem:44", "huawei:11"};
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < TEST_KEYS.length; i++) {
             dao.createOrUpdateAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
-                    notificationIdentifiers[i], EXISTING_ALARM.json);
+                    TEST_KEYS[i], EXISTING_ALARM.json);
         }
 
         // We expect that three alarms are returned. Exactly in the same order.
@@ -92,7 +93,94 @@ public class RaasDaoTestScenarios {
         RawAlarmsPack pack = dao.queryAlarms(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
                 "0", null, 5);
 
-        Assert.assertArrayEquals( notificationIdentifiers, pack.alarmNotificationIdentifiers );
+        Assert.assertArrayEquals(TEST_KEYS, pack.alarmNotificationIdentifiers );
+    }
+
+    /**
+     * This test must be executed on an empty topic. (i.e. a new instance of embedded broker is needed)
+     */
+    public void t6_whenGetTwoAlarms_thenProvideTagOfNextAlarm() {
+
+        // Create three alarms.  (so in the log we have: 0, 1, 2)
+        //
+        for (int i = 0; i < TEST_KEYS.length; i++) {
+            dao.createOrUpdateAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                    TEST_KEYS[i], EXISTING_ALARM.json);
+        }
+        // Let's remove all.
+        //
+        for (int i = 0; i < TEST_KEYS.length; i++) {
+            dao.removeAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                    TEST_KEYS[i]);
+        }
+        // Create three alarms again.
+        //
+        for (int i = 0; i < TEST_KEYS.length; i++) {
+            dao.createOrUpdateAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                    TEST_KEYS[i], EXISTING_ALARM.json);
+        }
+        // (so in the log we have: 0, 1, 2, x, x, x, 0, 1, 2)
+        //
+        // We expect:
+        //  all results - three alarms are returned.
+        //  first pack - two alarms are returned.
+        //  second pack - three alarms are returned.
+        //
+        check_for_t6(TEST_KEYS,
+                     new String[] {TEST_KEYS[0], TEST_KEYS[1]},
+                     TEST_KEYS);
+
+        // Update one alarm.
+        // It should be returned in the first pack AND in the second pack.
+        dao.createOrUpdateAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                TEST_KEYS[0], EXISTING_ALARM.json);
+        // (so in the log we have: 0, 1, 2, x, x, x, 0, 1, 2, 0)
+        //
+        // We expect:
+        //  all results - three alarms are returned.
+        //  first pack - two alarms are returned. Exactly in the same order.
+        //  second pack - three alarms are returned.
+        //
+        check_for_t6(new String[] {TEST_KEYS[1], TEST_KEYS[2], TEST_KEYS[0]},
+                     new String[] {TEST_KEYS[0], TEST_KEYS[1]},
+                     new String[] {TEST_KEYS[1], TEST_KEYS[2], TEST_KEYS[0]});
+
+        // Update another alarm.
+        dao.createOrUpdateAlarm(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                TEST_KEYS[2], EXISTING_ALARM.json);
+        // (so in the log we have: 0, 1, 2, x, x, x, 0, 1, 2, 0, 2)
+        //
+        // We expect:
+        //  all results - three alarms are returned.
+        //  first pack - two alarms are returned. Exactly in the same order.
+        //  second pack - three alarms are returned.
+        //
+        check_for_t6(new String[] {TEST_KEYS[1], TEST_KEYS[0], TEST_KEYS[2]},
+                     new String[] {TEST_KEYS[0], TEST_KEYS[1]},
+                     new String[] {TEST_KEYS[1], TEST_KEYS[0], TEST_KEYS[2]});
+    }
+
+    private void check_for_t6(String[] allResultsExpected, String[] firstPackExpected, String[] secondPackExpected) {
+        // All results - We expect that we have no tags for more alarms.
+        //
+        RawAlarmsPack pack = dao.queryAlarms(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                "0", null, 5);
+        Assert.assertArrayEquals(allResultsExpected, pack.alarmNotificationIdentifiers );
+        assertThat(pack.tagOfTheNextAvailableAlarm, is(nullValue()));
+
+        // First pack - We expect that we have the tag for the second pack.
+        //
+        RawAlarmsPack firstPack = dao.queryAlarms(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                "0", null, 2);
+        Assert.assertArrayEquals( firstPackExpected, firstPack.alarmNotificationIdentifiers );
+        assertThat(firstPack.tagOfTheNextAvailableAlarm, notNullValue());
+
+        // Second pack - We expect that we have no tags for more alarms.
+        //
+        RawAlarmsPack secondPack = dao.queryAlarms(EXISTING_ALARM.domain, EXISTING_ALARM.adapterName,
+                "0", firstPack.tagOfTheNextAvailableAlarm, 5);
+        Assert.assertArrayEquals( secondPackExpected, secondPack.alarmNotificationIdentifiers );
+        assertThat(secondPack.tagOfTheNextAvailableAlarm, is(nullValue()));
     }
 
 }
